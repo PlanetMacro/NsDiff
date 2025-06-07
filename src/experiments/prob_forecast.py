@@ -227,6 +227,23 @@ class ProbForecastExp(ForecastExp):
                     fast_test=fast_test,
                     fast_val=fast_val,
                 )
+
+        elif self.dataset_type == "custom_multy":
+            # Custom multi-CSV loader
+            self.dataloader = CustomMultyLoader(
+                self.dataset,
+                self.scaler,
+                window=self.windows,
+                horizon=self.horizon,
+                steps=self.pred_len,
+                scale_in_train=True,
+                shuffle_train=shuffle,
+                freq=self.dataset.freq,
+                batch_size=self.batch_size,
+                train_ratio=self.train_ratio,
+                test_ratio=self.test_ratio,
+                num_worker=self.num_worker,
+            )
         else:
             self.dataloader = SlidingWindowTS(
                 self.dataset,
