@@ -1,0 +1,73 @@
+# train.txt
+# Instructions to run pretraining and final training in NsDiff repository
+
+## Parameter Descriptions and Defaults
+
+- **horizon** (int, default `1`): Forecast horizon (gap between the end of the input window and the start of the prediction window). A horizon of 1 predicts the very next timestep; a horizon of 2 skips one step before predicting, and so on.
+
+- **patience** (int, default `5`): Early-stopping patience. Number of consecutive epochs with no improvement in validation loss before training halts automatically.
+
+## 1. F-model Pretraining
+# - dataset_type: ETTh1 (Electricity Transformer Temperature Hourly dataset variant 1)
+# - device: cpu (or use 'cuda:0' for GPU if available)
+# - batch_size: 32
+# - horizon: 1 (unused by F-model, kept for consistency)
+# - pred_len: 6 (prediction length)
+# - windows: 12 (input window length)
+# - epochs: 1
+# - patience: 1 (early stopping patience)
+# - num_worker: 0 (disable parallel workers to avoid shared-memory errors)
+# - seeds: list of random seeds for reproducibility
+
+export PYTHONPATH=./ && CUDA_DEVICE_ORDER=PCI_BUS_ID \
+  python3 src/experiments/pretrain_f.py \
+    --dataset_type="ETTh1" \
+    --device="cpu" \
+    --batch_size=32 \
+    --horizon=1 \
+    --pred_len=6 \
+    --windows=12 \
+    --epochs=1 \
+    --patience=1 \
+    --num_worker=0 \
+  runs --seeds='[1]'
+
+## 2. G-model Pretraining
+# - Uses same dataset and device settings
+# - rolling_length: 6 (matches window size)
+# - Other flags as in F-model
+
+export PYTHONPATH=./ && CUDA_DEVICE_ORDER=PCI_BUS_ID \
+  python3 src/experiments/pretrain_g.py \
+    --dataset_type="ETTh1" \
+    --device="cpu" \
+    --batch_size=32 \
+    --horizon=1 \
+    --pred_len=6 \
+    --windows=12 \
+    --epochs=1 \
+    --patience=1 \
+    --num_worker=0 \
+    --rolling_length=6 \
+  runs --seeds='[1]'
+
+## 3. NsDiff Training (final model)
+# - load_pretrain: True (loads F and G pretrained checkpoints)
+# - diffusion_steps: 2 (small smoke-test)
+# - Other hyperparameters consistent with pretraining steps
+
+export PYTHONPATH=./ && CUDA_DEVICE_ORDER=PCI_BUS_ID \
+  python3 src/experiments/NsDiff.py \
+    --dataset_type="ETTh1" \
+    --device="cpu" \
+    --batch_size=32 \
+    --horizon=1 \
+    --pred_len=6 \
+    --windows=12 \
+    --epochs=1 \
+    --patience=1 \
+    --num_worker=0 \
+    --rolling_length=6 \
+    --diffusion_steps=2 \
+    --load_pretrain=True \
+  runs --seeds='[1]'
