@@ -100,10 +100,13 @@ class NsDiffInference:
             cfg.get("rolling_length", windows // 2),
         ).float().to(self.device)
         # Load pretrained weights
-        # Expect weights at: save_dir/runs/NsDiff/{dataset_type}/w{windows}h{horizon}s{pred_len}/{seed}/
+        # Determine runs directory: either save_dir/runs or save_dir/results/runs
+        runs_root = os.path.join(save_dir, "runs")
+        if not os.path.isdir(runs_root):
+            runs_root = os.path.join(save_dir, "results", "runs")
+        # Expect weights at: <runs_root>/NsDiff4/{dataset_type}/w{windows}h{horizon}s{pred_len}/{seed}/
         run_dir = os.path.join(
-            save_dir,
-            "runs",
+            runs_root,
             "NsDiff4",
             dataset_type,
             f"w{windows}h{horizon}s{pred_len}",
