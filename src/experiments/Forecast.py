@@ -79,7 +79,8 @@ def main():
     x = history
     if x.ndim == 1:
         x = x[:, None]
-    scaled_x = inferer.scaler.transform(x)
+    # No scaling
+    scaled_x = x
     # Time features for history
     hist_dates = inferer.dataset.dates.iloc[start : start + args.windows].reset_index(drop=True)
     x_mark = time_features(hist_dates, args.time_enc, inferer.dataset.freq)

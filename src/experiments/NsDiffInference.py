@@ -48,9 +48,8 @@ class NsDiffInference:
         self.dataset: TimeSeriesDataset = parse_type(dataset_type, globals())(
             root=data_path
         )
-        # Initialize scaler and fit on entire data
-        self.scaler = parse_type(scaler_type, globals())()
-        self.scaler.fit(self.dataset.data)
+        # No scaling, use identity transform
+        self.scaler = SimpleNamespace(transform=lambda x: x, inverse_transform=lambda x: x)
         # Build models
         label_len = windows // 2
         args = {
