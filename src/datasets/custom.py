@@ -44,6 +44,7 @@ class CustomCsv(TimeSeriesDataset):
         self.num_features = self.data.shape[1]
         self.length = self.data.shape[0]
         # Infer frequency from datetime index
+
         freq_str = pd.infer_freq(times)
         mapping = {'S': 's', 'T': 't', 'H': 'h', 'D': 'd', 'M': 'm', 'A': 'y'}
         if freq_str and freq_str[0] in mapping:

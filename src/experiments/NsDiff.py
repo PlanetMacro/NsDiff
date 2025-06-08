@@ -21,6 +21,7 @@ import time
 import torch.multiprocessing as mp
 from torch_timeseries.utils.parse_type import parse_type
 
+from src.datasets import Custom  # Ensure Custom dataset is available for parse_type
 from torch_timeseries.utils.early_stop import EarlyStopping
 from src.layer.nsdiff_utils import q_sample, p_sample_loop, cal_sigma12, cal_sigma_tilde, cal_forward_noise
 import yaml
