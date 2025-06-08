@@ -1,3 +1,23 @@
+beta_start: 0.0001
+beta_end: 0.01
+timesteps: 20
+d_model: 512
+n_heads: 8
+e_layers: 2
+d_layers: 1
+d_ff: 1024
+moving_avg: 25
+factor: 3
+distil: True
+dropout: 0.05
+activation: gelu
+k_z: 0.01
+k_cond: 1
+p_hidden_dims: [64, 64]
+CART_input_x_embed_dim: 32
+p_hidden_layers: 2
+d_z: 8
+diffusion_config_dir: "./configs/nsdiff.yml"
 sampling:
     batch_size: 256
     sampling_size: 1000
