@@ -1,246 +1,220 @@
-import os
-import torch
-import yaml
-import numpy as np
-import pandas as pd
-from types import SimpleNamespace
-from torch_timeseries.utils.parse_type import parse_type
-from torch_timeseries.core import TimeSeriesDataset
-from torch_timeseries.utils.timefeatures import time_features
-import src.layer.mu_backbone as ns_Transformer
-import src.layer.g_backbone as G
-from src.models.NsDiff import NsDiff
-from src.experiments.NsDiff import dict2namespace, p_sample_loop
+"""
+NsDiffInference
+~~~~~~~~~~~~~~~
+Run inference with a trained NsDiff diffusion model (plus its conditional
+predictors F and G) for any dataset / seed.
 
-# Inference class for NsDiff model
-default_scaler = "StandardScaler"
+Directory layout expected
+-------------------------
+results/runs/
+│
+├─ NsDiff4/<dataset>/w{w}h{h}s{s}/{seed}/model.pth
+├─ F       /<dataset>/w{w}h{h}s{s}/{seed}/best_model.pth
+│          └─ args.json            <-- hyper-params for F
+└─ G       /<dataset>/w{w}h{h}s{s}/{seed}/best_model.pth
+           └─ args.json            <-- hyper-params for G
+"""
+
+import json
+import os
+from types import SimpleNamespace
+
+import yaml
+import torch
+import pandas as pd
+import numpy as np
+
+from src.models.NsDiff import NsDiff
+import src.layer.mu_backbone as F                        # predictor
+import src.layer.g_backbone as G                         # sigma estimator
+from src.experiments.NsDiff import dict2namespace
+from src.layer.nsdiff_utils import p_sample_loop
+
+
 class NsDiffInference:
+    # ------------------------------------------------------------------ #
+    # constructor                                                         #
+    # ------------------------------------------------------------------ #
     def __init__(
         self,
-        data_path: str,
         dataset_type: str,
-        save_dir: str,
         windows: int,
         horizon: int,
         pred_len: int,
+        num_features: int,
         seed: int,
         device: str = "cpu",
-        scaler_type: str = default_scaler,
-        time_enc: int = 3,
         minisample: int = 1,
+        freq: str = "d",
     ):
-        # Initialize parameters
-        self.data_path = data_path
-        self.dataset_type = dataset_type
-        self.save_dir = save_dir
+        # ---------- base attributes ----------
         self.windows = windows
         self.horizon = horizon
         self.pred_len = pred_len
+        self.num_features = num_features
         self.seed = seed
         self.device = torch.device(device)
-        self.time_enc = time_enc
-        # Load diffusion configuration
-        cfg_path = os.path.join("configs", "nsdiff.yml")
-        with open(cfg_path, "r") as f:
-            cfg = yaml.unsafe_load(f)
+        self.minisample = minisample
+        self.label_len = windows // 2
+
+        # ---------- load global diffusion config ----------
+        with open(os.path.join("configs", "nsdiff.yml"), "r") as f:
+            cfg = yaml.safe_load(f)
         self.diffusion_config = dict2namespace(cfg)
-        # Load dataset
-        self.dataset: TimeSeriesDataset = parse_type(dataset_type, globals())(
-            root=data_path
+
+        # ---------- assemble arg namespace ----------
+        args = SimpleNamespace(
+            seq_len=windows,
+            device=self.device,
+            pred_len=pred_len,
+            label_len=self.label_len,
+            features="M",
+            beta_start=cfg["beta_start"],
+            beta_end=cfg["beta_end"],
+            enc_in=num_features,
+            dec_in=num_features,
+            c_out=num_features,
+            d_model=cfg["d_model"],
+            n_heads=cfg["n_heads"],
+            e_layers=cfg["e_layers"],
+            d_layers=cfg["d_layers"],
+            d_ff=cfg["d_ff"],
+            moving_avg=cfg["moving_avg"],
+            timesteps=cfg["timesteps"],
+            factor=cfg["factor"],
+            distil=cfg["distil"],
+            beta_schedule=cfg.get("beta_schedule", "linear"),
+            embed=cfg.get("embed", "timeF"),
+            dropout=cfg["dropout"],
+            activation=cfg["activation"],
+            output_attention=False,
+            do_predict=True,
+            k_z=cfg["k_z"],
+            k_cond=cfg["k_cond"],
+            p_hidden_dims=cfg["p_hidden_dims"],
+            freq=freq,
+            CART_input_x_embed_dim=cfg["CART_input_x_embed_dim"],
+            p_hidden_layers=cfg["p_hidden_layers"],
+            d_z=cfg["d_z"],
+            diffusion_config_dir=cfg["diffusion_config_dir"],
         )
-        # No scaling, use identity transform
-        self.scaler = SimpleNamespace(transform=lambda x: x, inverse_transform=lambda x: x)
-        # Build models
-        label_len = windows // 2
-        args = {
-            "seq_len": windows,
-            "device": self.device,
-            "pred_len": pred_len,
-            "label_len": label_len,
-            "features": "M",
-            "beta_start": cfg.get("beta_start"),
-            "beta_end": cfg.get("beta_end"),
-            "enc_in": self.dataset.num_features,
-            "dec_in": self.dataset.num_features,
-            "c_out": self.dataset.num_features,
-            "d_model": cfg.get("d_model"),
-            "n_heads": cfg.get("n_heads"),
-            "e_layers": cfg.get("e_layers"),
-            "d_layers": cfg.get("d_layers"),
-            "d_ff": cfg.get("d_ff"),
-            "moving_avg": cfg.get("moving_avg"),
-            "timesteps": cfg.get("timesteps"),
-            "factor": cfg.get("factor"),
-            "distil": cfg.get("distil"),
-            "beta_schedule": cfg.get("beta_schedule", "linear"),
-            "embed": cfg.get("embed", "timeF"),
-            "dropout": cfg.get("dropout"),
-            "activation": cfg.get("activation"),
-            "output_attention": False,
-            "do_predict": True,
-            "k_z": cfg.get("k_z"),
-            "k_cond": cfg.get("k_cond"),
-            "p_hidden_dims": cfg.get("p_hidden_dims"),
-            "freq": self.dataset.freq,
-            # G and sigma params
-            "CART_input_x_embed_dim": cfg.get("CART_input_x_embed_dim"),
-            "p_hidden_layers": cfg.get("p_hidden_layers"),
-            "d_z": cfg.get("d_z"),
-            "diffusion_config_dir": cfg.get("diffusion_config_dir"),
-        }
-        self.args = SimpleNamespace(**args)
-        # Initialize diffusion model (NsDiff) and conditional predictors
-        self.model = NsDiff(self.args, self.device).to(self.device)
-        self.cond_pred_model = ns_Transformer.Model(self.args).float().to(self.device)
-        self.cond_pred_model_g = G.SigmaEstimation(
-            windows,
-            pred_len,
-            self.dataset.num_features,
-            cfg.get("CART_input_x_embed_dim"),
-            cfg.get("rolling_length", windows // 2),
-        ).float().to(self.device)
-        # Load pretrained weights
-        # Determine runs directory: either save_dir/runs or save_dir/results/runs
-        runs_root = os.path.join(save_dir, "runs")
-        if not os.path.isdir(runs_root):
-            runs_root = os.path.join(save_dir, "results", "runs")
-        # Expect weights at: <runs_root>/NsDiff4/{dataset_type}/w{windows}h{horizon}s{pred_len}/{seed}/
-        run_dir = os.path.join(
+        self.args = args                         # keep for callers
+
+        # ---------- instantiate NsDiff + F ----------
+        self.NsDiff = NsDiff(args, self.device).to(self.device)
+        self.F = F.Model(args).float().to(self.device)
+
+        # ---------- locate run directories ----------
+        runs_root = os.path.join(os.getcwd(), "results", "runs")
+        ns_dir = os.path.join(
             runs_root,
             "NsDiff4",
             dataset_type,
             f"w{windows}h{horizon}s{pred_len}",
             str(seed),
         )
-        self.model.load_state_dict(
-            torch.load(os.path.join(run_dir, "model.pth"), map_location=self.device)
+        f_dir = os.path.join(
+            runs_root,
+            "F",
+            dataset_type,
+            f"w{windows}h{horizon}s{pred_len}",
+            str(seed),
         )
-        self.cond_pred_model.load_state_dict(
-            torch.load(
-                os.path.join(run_dir, "cond_pred_model.pth"), map_location=self.device
-            )
+        g_dir = os.path.join(
+            runs_root,
+            "G",
+            dataset_type,
+            f"w{windows}h{horizon}s{pred_len}",
+            str(seed),
         )
-        self.cond_pred_model_g.load_state_dict(
-            torch.load(
-                os.path.join(run_dir, "cond_pred_model_g.pth"), map_location=self.device
-            )
-        )
-        self.model.eval()
-        self.cond_pred_model.eval()
-        self.cond_pred_model_g.eval()
-        self.minisample = minisample
-        self.label_len = label_len
 
-    def infer(self, window: np.ndarray) -> np.ndarray:
-        """
-        Perform inference on a raw time-series window.
-        Args:
-            window: np.ndarray of shape (windows, num_features) or (windows,)
-        Returns:
-            np.ndarray: predicted values of shape (pred_len, num_features)
-        """
-        x = np.asarray(window)
-        if x.ndim == 1:
-            x = x[:, None]
-        # Scale input
-        scaled_x = self.scaler.transform(x)
-        # Time encoding for x
-        dates = self.dataset.dates.iloc[-self.windows:].reset_index(drop=True)
-        x_mark = time_features(dates, self.time_enc, self.dataset.freq)
-        # Time encoding for y (future)
-        # Generate future dates
-        # Map freq to pandas freq strings
-        freq_map = {"s": "S", "t": "T", "h": "H", "d": "D", "m": "M", "y": "A"}
-        pd_freq = freq_map.get(self.dataset.freq, self.dataset.freq)
-        last_date = dates["date"].iloc[-1]
-        future_all = pd.date_range(start=last_date, periods=self.pred_len + 1, freq=pd_freq)
-        future_dates = future_all[1:]
-        future_df = pd.DataFrame({"date": future_dates})
-        y_mark = time_features(future_df, self.time_enc, self.dataset.freq)
-        # Prepare tensors
-        batch_x = torch.tensor(scaled_x, dtype=torch.float32).unsqueeze(0).to(self.device)
-        batch_x_mark = torch.tensor(x_mark, dtype=torch.float32).unsqueeze(0).to(self.device)
-        batch_y_mark = torch.tensor(y_mark, dtype=torch.float32).unsqueeze(0).to(self.device)
-        # Dummy batch_y
-        batch_y = torch.zeros(
-            (1, self.pred_len, self.dataset.num_features),
-            dtype=torch.float32,
-            device=self.device,
+        # ---------- load NsDiff + F checkpoints ----------
+        self.NsDiff.load_state_dict(
+            torch.load(os.path.join(ns_dir, "model.pth"), map_location=self.device)
         )
-        # Run inference
-        with torch.no_grad():
-            outs = self._process_val_batch(batch_x, batch_y, batch_x_mark, batch_y_mark)
-        # outs shape: (1, pred_len, num_features, n_z_samples)
-        # Return mean across samples
-        return outs.mean(dim=-1).squeeze(0).cpu().numpy()
+        self.F.load_state_dict(
+            torch.load(os.path.join(f_dir, "best_model.pth"), map_location=self.device)
+        )
 
-    def _process_val_batch(self, batch_x, batch_y, batch_x_mark, batch_y_mark):
-        # Based on NsDiff._process_val_batch logic
-        b = batch_x.shape[0]
-        minisample = self.minisample
-        # concat past and future marks for decoder input
-        batch_y_mark_input = torch.cat(
-            [batch_x_mark[:, -self.label_len :, :], batch_y_mark], dim=1
+        # ---------- recreate & load G exactly as trained ----------
+        with open(os.path.join(g_dir, "args.json"), "r") as f:
+            g_args = json.load(f)
+
+        hidden_dim  = g_args.get("hidden_size", 512)
+        kernel_size = (
+            g_args.get("kernel_size") or           # some training scripts use this key
+            g_args.get("rolling_length")           # others use rolling_length
         )
-        # Decoder input: zeros for future steps
-        dec_pred = torch.zeros(
-            [b, self.pred_len, self.dataset.num_features], device=self.device
+        if kernel_size is None:
+            raise ValueError(
+                "Could not infer kernel_size from G args.json; "
+                "expected keys 'kernel_size' or 'rolling_length'."
+            )
+
+        self.G = G.SigmaEstimation(
+            windows, pred_len, num_features, hidden_dim, kernel_size
+        ).float().to(self.device)
+
+        self.G.load_state_dict(
+            torch.load(os.path.join(g_dir, "best_model.pth"), map_location=self.device)
         )
-        dec_label = batch_x[:, -self.label_len :, :]
-        dec_inp = torch.cat([dec_label, dec_pred], dim=1)
-        # Conditional predictions
-        y0_hat, _ = self.cond_pred_model(
-            batch_x, batch_x_mark, dec_inp, batch_y_mark_input
-        )
-        gx = self.cond_pred_model_g(batch_x)
-        # Random timesteps
-        n = b
-        t = torch.randint(
-            low=0, high=self.model.num_timesteps, size=(n // 2 + 1,), device=self.device
-        )
-        t = torch.cat([t, self.model.num_timesteps - 1 - t], dim=0)[:n]
-        # Sampling
-        preds = []
-        for _ in range(self.diffusion_config.testing.n_z_samples // minisample):
-            # tile inputs
-            rep = minisample
-            y0 = y0_hat.repeat(rep, 1, 1, 1).transpose(0, 1).flatten(0, 1)
-            yT = y0
-            x_t = batch_x.repeat(rep, 1, 1, 1).transpose(0, 1).flatten(0, 1)
-            xm = batch_x_mark.repeat(rep, 1, 1, 1).transpose(0, 1).flatten(0, 1)
-            gx_t = gx.repeat(rep, 1, 1, 1).transpose(0, 1).flatten(0, 1)
-            # draw samples
-            gen_box = []
-            for _ in range(self.diffusion_config.testing.n_z_samples_depart):
-                for _ in range(self.diffusion_config.testing.n_z_samples_depart):
-                    seq = p_sample_loop(
-                        self.model,
-                        x_t,
-                        xm,
-                        y0,
-                        gx_t,
-                        yT,
-                        self.model.num_timesteps,
-                        self.model.alphas,
-                        self.model.one_minus_alphas_bar_sqrt,
-                        self.model.alphas_cumprod,
-                        self.model.alphas_cumprod_sum,
-                        self.model.alphas_cumprod_prev,
-                        self.model.alphas_cumprod_sum_prev,
-                        self.model.betas_tilde,
-                        self.model.betas_bar,
-                        self.model.betas_tilde_m_1,
-                        self.model.betas_bar_m_1,
-                    )
-                gen = seq[self.model.num_timesteps].reshape(
-                    b,
-                    minisample,
-                    self.pred_len,
-                    self.dataset.num_features,
-                )
-                gen_box.append(gen.detach().cpu())
-            out = torch.cat(gen_box, dim=1)  # B, n_z_samples, pred_len, N? adjust
-            preds.append(out)
-        preds = torch.cat(preds, dim=1)  # B, total_samples, pred_len, N
-        # reorder: (B, pred_len, N, samples)
-        return preds.permute(0, 2, 3, 1)  # shape B, O, N, n_z_samples
+
+        # ---------- eval mode ----------
+        self.NsDiff.eval()
+        self.F.eval()
+        self.G.eval()
+
+        print("NsDiffInference ready. Args snapshot:")
+        print(self.args)
+
+    # ------------------------------------------------------------------ #
+    # add your own sampling logic here                                    #
+    # ------------------------------------------------------------------ #
+    def infer(self, batch_x, batch_y, batch_x_mark, batch_y_mark):
+        # batch_x: (B, T, N)
+        # batch_y: (B, O, N)        
+        print("hi there")
+        
+        batch_y_mark_input = torch.concat([batch_x_mark[:, -self.label_len:, :], batch_y_mark], dim=1)
+
+        dec_inp_pred = torch.zeros(
+            [batch_x.size(0), self.pred_len, self.num_features]
+        ).to(self.device)
+        dec_inp_label = batch_x[:, -self.label_len :, :].to(self.device)
+        dec_inp = torch.cat([dec_inp_label, dec_inp_pred], dim=1)        
+        
+        # f(X)
+        y_0_hat_batch, _ = self.F(batch_x, batch_x_mark, dec_inp,batch_y_mark_input)
+        # g(X)
+        gx = self.G(batch_x)
+        
+        repeat_n = self.minisample
+        y_0_hat_tile = y_0_hat_batch.repeat(repeat_n, 1, 1, 1)
+        y_0_hat_tile = y_0_hat_tile.transpose(0, 1).flatten(0, 1).to(self.device)
+        y_T_mean_tile = y_0_hat_tile
+        x_tile = batch_x.repeat(repeat_n, 1, 1, 1)
+        x_tile = x_tile.transpose(0, 1).flatten(0, 1).to(self.device)
+
+        x_mark_tile = batch_x_mark.repeat(repeat_n, 1, 1, 1)
+        x_mark_tile = x_mark_tile.transpose(0, 1).flatten(0, 1).to(self.device)
+
+        gx_tile = gx.repeat(repeat_n, 1, 1, 1)
+        gx_tile = gx_tile.transpose(0, 1).flatten(0, 1).to(self.device)        
+
+        y_tile_seq = p_sample_loop(self.NsDiff, x_tile, x_mark_tile, y_0_hat_tile, gx_tile, y_T_mean_tile,
+                            self.NsDiff.num_timesteps,
+                            self.NsDiff.alphas, 
+                            self.NsDiff.one_minus_alphas_bar_sqrt,
+                            self.NsDiff.alphas_cumprod, 
+                            self.NsDiff.alphas_cumprod_sum,
+                            self.NsDiff.alphas_cumprod_prev, 
+                            self.NsDiff.alphas_cumprod_sum_prev,
+                            self.NsDiff.betas_tilde, 
+                            self.NsDiff.betas_bar,
+                            self.NsDiff.betas_tilde_m_1, 
+                            self.NsDiff.betas_bar_m_1,
+                            )
+        y_tile = y_tile_seq[-1]
+        print(f"Num_timesteps: {self.NsDiff.num_timesteps}")
+        print(f"shape x_tile : {x_tile.shape}")                    
+        print(f"shape y_tile: {y_tile.shape}")
