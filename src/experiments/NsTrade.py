@@ -201,7 +201,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Run the NsTrade experiment")
     parser.add_argument("--dataset_type", required=True)
-    parser.add_argument("--data_path", default="./datasets")
+    parser.add_argument("--data_path", default="./data")
     parser.add_argument("--windows", type=int, default=336)
     parser.add_argument("--pred_len", type=int, default=96)
     parser.add_argument("--epochs", type=int, default=6)
