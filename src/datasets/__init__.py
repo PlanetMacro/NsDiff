@@ -9,4 +9,8 @@ builtins.Custom = CustomCsv
 # Alias for single-file custom CSV loader
 Custom = CustomCsv
 
+# lowercase alias so `dataset_type="custom"` works with parse_type
+builtins.custom = CustomCsv
+custom = CustomCsv
+
 from .customMulty import CustomMultyCsv, CustomMultyLoader
