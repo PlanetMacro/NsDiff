@@ -138,6 +138,50 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
     # ---------------------------------------------------------------------
 
     def _init_optimizer(self) -> None:  # noqa: D401
+        """Optimizer already defined in `_init_model`."""
+        pass
+    # ---------------------------------------------------------------------
+    # 2.3  Training- & validation-batch helpers required by ProbForecastExp
+    # ---------------------------------------------------------------------
+
+    def _process_train_batch(
+        self,
+        batch_x: torch.Tensor,
+        batch_y: torch.Tensor,
+        batch_x_date_enc: torch.Tensor,
+        batch_y_date_enc: torch.Tensor,
+    ):
+        """Required by `ProbForecastExp._train`.
+
+        We make a *single-step* prediction using the last time step of
+        `batch_y` as target.
+        """
+        batch_x = batch_x.to(self.device).float()
+        batch_y = batch_y.to(self.device).float()
+
+        pred = self.model(batch_x)               # (B, N)
+        true = batch_y[:, -1, :].to(self.device)  # last step
+        return pred, true
+
+    def _process_val_batch(
+        self,
+        batch_x: torch.Tensor,
+        batch_origin_x: torch.Tensor,
+        batch_x_date_enc: torch.Tensor,
+        batch_y_date_enc: torch.Tensor,
+    ):
+        """Used during validation / testing phases by `ProbForecastExp`."""
+
+        batch_x = batch_x.to(self.device).float()
+        batch_origin_x = batch_origin_x.to(self.device).float()
+
+        pred = self.model(batch_x)
+        # For validation we again compare to the last step of the *unscaled*
+        # original sequence.
+        true = batch_origin_x[:, -1, :]
+        return pred, true
+
+
         # already done in `_init_model`, so we *pass* here.
         pass
 
