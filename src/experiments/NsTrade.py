@@ -1,17 +1,17 @@
 """
-NsTrade – A minimal example showing how to write a fully-featured training
+NsTrade ŌĆō A minimal example showing how to write a fully-featured training
 loop with `torch_timeseries` while **keeping the code base of this repo
 unchanged**.
 
 The goal is **pedagogical**: it demonstrates how you can
-  • subclass an existing experiment class (`ForecastExp`),
-  • plug-in your own model,
-  • plug-in your own loss function,
-  • add extra hyper-parameters via a `@dataclass`,
+  ŌĆó subclass an existing experiment class (`ForecastExp`),
+  ŌĆó plug-in your own model,
+  ŌĆó plug-in your own loss function,
+  ŌĆó add extra hyper-parameters via a `@dataclass`,
 all without touching anything inside the `torch_timeseries` package.
 
 Everything marked with the word "MOCK" is *dummy* code that you will replace
-with your real model / loss later on – explanatory comments tell you *where*
+with your real model / loss later on ŌĆō explanatory comments tell you *where*
 and *how* to do that.
 """
 from __future__ import annotations
@@ -23,14 +23,14 @@ from tqdm import tqdm
 # --------------- third-party ---------------
 import torch
 from torch import nn
-from torch.optim import Adam
+
 
 # --------------- torch_timeseries ---------------
 # `ForecastExp` already implements: data loading, metric tracking, early
 # stopping, logging, etc.  We only need to supply a model + loss + the core
 # forward method.
 import numpy as np
-# Ensure backward‐compat constant for older utils expecting `np.Inf`
+# Ensure backwardŌĆÉcompat constant for older utils expecting `np.Inf`
 if not hasattr(np, "Inf"):
     np.Inf = np.inf
 
@@ -47,7 +47,7 @@ from src.experiments.NsDiffInference import NsDiffInference  # strict dependency
 class MOCK_NET(nn.Module):
     """A *very* small network that only serves as a placeholder.
 
-    Architecture: (Last-time-step) → Linear → ReLU → Linear.
+    Architecture: (Last-time-step) ŌåÆ Linear ŌåÆ ReLU ŌåÆ Linear.
 
     Replace this class with **your real forecasting model**.  All you have to
     keep is the typical PyTorch `forward()` signature.
@@ -91,7 +91,7 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
     training/validation/testing loop provided by `ProbForecastExp`.  This gives you all probability-forecasting metrics and appropriate dataloaders out of the box.
 
     Inherit from another `torch_timeseries.experiments.*` class if your task
-    is *not* forecasting (e.g. `ImputationExp`, `AnomalyExp`, …).
+    is *not* forecasting (e.g. `ImputationExp`, `AnomalyExp`, ŌĆ”).
     """
     use_gpu: bool = False  # ensure every run stays on CPU
 
@@ -104,7 +104,7 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
         self.device = "cpu"
 
 
-    # `ForecastExp` already defines plenty of attributes (batch_size, lr, …)
+    # `ForecastExp` already defines plenty of attributes (batch_size, lr, ŌĆ”)
     # Below we only set the ones we *want* to overwrite / add.
 
     # --- identification strings shown in logs / wandb ----------------------
@@ -118,7 +118,7 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
 
 
     # ---------------------------------------------------------------------
-    # 2.1  Loss – overwrite `_init_loss_func`
+    # 2.1  Loss ŌĆō overwrite `_init_loss_func`
     # ---------------------------------------------------------------------
 
     def _init_loss_func(self) -> None:  # noqa: D401
@@ -126,7 +126,7 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
         self.loss_func = MOCK_LOSS()
 
     # ---------------------------------------------------------------------
-    # 2.1b  Metrics – keep it simple for this CPU demo
+    # 2.1b  Metrics ŌĆō keep it simple for this CPU demo
     # ---------------------------------------------------------------------
 
 
@@ -144,7 +144,7 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
         self.task_pool = ctx.Pool(processes=1)
 
     # ---------------------------------------------------------------------
-    # 2.2  Model – overwrite `_init_model`
+    # 2.2  Model ŌĆō overwrite `_init_model`
     # ---------------------------------------------------------------------
 
     def _init_model(self) -> None:
@@ -159,7 +159,7 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
 
         # Replace by your REAL model, e.g.
         #   self.model = Informer(
-        #       enc_in=input_dim, dec_in=input_dim, c_out=input_dim, …
+        #       enc_in=input_dim, dec_in=input_dim, c_out=input_dim, ŌĆ”
         #   ).to(self.device)
         self.model = MOCK_NET(input_dim, self.hidden).to(self.device)
 
@@ -176,20 +176,14 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
             freq=self.freq,
         )
 
-        # You can of course reuse `_init_optimizer` from the parent class, but
-        # here we show how to plug your own.  Replace `Adam` by whatever you
-        # need.
-        self.model_optim = Adam(
-            self.model.parameters(), lr=self.lr, weight_decay=self.l2_weight_decay
-        )
+        # Use parent class helper to create optimizer
+        super()._init_optimizer()
 
     # ---------------------------------------------------------------------
-    # 2.3  Optional – skip `_init_optimizer` because we initialise it above
+    # 2.3  Optional ŌĆō skip `_init_optimizer` because we initialise it above
     # ---------------------------------------------------------------------
 
-    def _init_optimizer(self) -> None:  # noqa: D401
-        """Optimizer already defined in `_init_model`."""
-        pass
+
     # ---------------------------------------------------------------------
     # 2.3  Training- & validation-batch helpers required by ProbForecastExp
     # ---------------------------------------------------------------------
@@ -234,13 +228,13 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
 
         # already done in `_init_model`, so we *pass* here.
     # ---------------------------------------------------------------------
-    # 2.3c  Evaluation – keep full prediction shape for probabilistic metrics
+    # 2.3c  Evaluation ŌĆō keep full prediction shape for probabilistic metrics
     # ---------------------------------------------------------------------
     def _evaluate(self, dataloader):  # noqa: C901
         """Copy of ``ProbForecastExp._evaluate`` without the shape squeeze.
 
         The parent class flattens predictions when ``pred_len==1`` which breaks
-        CRPS/QICE/etc.  Here we always feed the *full* tensor to the metrics –
+        CRPS/QICE/etc.  Here we always feed the *full* tensor to the metrics ŌĆō
         our ``_process_one_batch`` already returns the expected 4-D/3-D shapes.
         """
         from tqdm import tqdm
@@ -299,7 +293,7 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
         pass
 
     # ---------------------------------------------------------------------
-    # 2.4  Core logic – overwrite `_process_one_batch`
+    # 2.4  Core logic ŌĆō overwrite `_process_one_batch`
     # ---------------------------------------------------------------------
 
     def _process_one_batch(  # type: ignore[override]
@@ -315,8 +309,8 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
 
         The default shape conventions in `ForecastExp` are:
             batch_x  : (B, T, N)
-            batch_y  : (B, steps, N)   – not used here, but provided
-            origin_y : (B, T, N)       – *unscaled* ground truth (if needed)
+            batch_y  : (B, steps, N)   ŌĆō not used here, but provided
+            origin_y : (B, T, N)       ŌĆō *unscaled* ground truth (if needed)
 
         A *real* sequence model would usually take *both* `batch_x` and
         `batch_y` (teacher-forcing).  For the sake of clarity we demonstrate a
@@ -332,10 +326,10 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
         # -----------------------------------------------------------------
         pred_deterministic = self.model(batch_x)  # (B, N)
         # For probabilistic metrics expect (B, O, N, S).  We have only one step (O=1)
-        # and one sample (S=1) → add singleton dims.
+        # and one sample (S=1) ŌåÆ add singleton dims.
         pred = pred_deterministic.unsqueeze(1).unsqueeze(-1)   # (B, 1, N, 1)
 
-        # Target → last time step of the (already *unscaled*) ground truth.
+        # Target ŌåÆ last time step of the (already *unscaled*) ground truth.
         true = origin_y[:, -1, :].unsqueeze(1)   # (B, 1, N)
 
         return pred, true
@@ -384,7 +378,7 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
 
 
 # ============================================================================
-# 3.  Convenience factory – *optional*
+# 3.  Convenience factory ŌĆō *optional*
 # ----------------------------------------------------------------------------
 # With the following helper you can launch training from the command line:
 #
