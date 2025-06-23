@@ -38,6 +38,8 @@ from src.experiments.prob_forecast import ProbForecastExp  # use the more featur
 from src.datasets import Custom  # ensure 'Custom' dataset is in globals for parse_type
 
 from torch_timeseries.utils.parse_type import parse_type  # reuse utility
+from src.experiments.NsDiffInference import NsDiffInference  # strict dependency
+
 
 # ============================================================================
 # 1.  MOCK building blocks you will later replace
@@ -108,6 +110,12 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
     # --- identification strings shown in logs / wandb ----------------------
     model_type: str = "MOCK_NET"         # appears in filenames & wandb runs
     loss_func_type: str = "mock"          # just a placeholder for readability
+    # Extra parameters required for NsDiffInference
+    horizon: int = 24
+    seed: int = 42
+    minisample: int = 1
+    freq: str = "d"
+
 
     # ---------------------------------------------------------------------
     # 2.1  Loss – overwrite `_init_loss_func`
@@ -154,6 +162,19 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
         #       enc_in=input_dim, dec_in=input_dim, c_out=input_dim, …
         #   ).to(self.device)
         self.model = MOCK_NET(input_dim, self.hidden).to(self.device)
+
+        # Instantiate pre-trained NsDiffInference (required)
+        self.inferencer = NsDiffInference(
+            dataset_type=self.dataset_type,
+            windows=self.windows,
+            horizon=self.horizon,
+            pred_len=self.pred_len,
+            num_features=input_dim,
+            seed=self.seed,
+            device=self.device,
+            minisample=self.minisample,
+            freq=self.freq,
+        )
 
         # You can of course reuse `_init_optimizer` from the parent class, but
         # here we show how to plug your own.  Replace `Adam` by whatever you
@@ -385,6 +406,10 @@ if __name__ == "__main__":
     parser.add_argument("--data_path", default="./data")
     parser.add_argument("--windows", type=int, default=336)
     parser.add_argument("--pred_len", type=int, default=96)
+    parser.add_argument("--horizon", type=int, default=24)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--minisample", type=int, default=1)
+    parser.add_argument("--freq", type=str, default="d")
     parser.add_argument("--epochs", type=int, default=6)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
@@ -397,6 +422,10 @@ if __name__ == "__main__":
         data_path=args.data_path,
         windows=args.windows,
         pred_len=args.pred_len,
+        horizon=args.horizon,
+        seed=args.seed,
+        minisample=args.minisample,
+        freq=args.freq,
         epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,
