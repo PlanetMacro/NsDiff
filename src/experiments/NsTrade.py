@@ -53,24 +53,7 @@ class MOCK_NET(nn.Module):
 
     def __init__(self, input_dim: int, hidden: int = 64):
         super().__init__()
-        """
-        TODO: 
-        * update this file such that we can instantiate 'NsDiffInference' like this:
-        inferencer = NsDiffInference(
-            dataset_type=args.dataset_type,
-            windows=args.windows,
-            horizon=args.horizon,
-            pred_len=args.pred_len,
-            num_features=args.num_features,
-            seed=args.seed,
-            device=args.device,
-            minisample=args.minisample,
-            freq=args.freq,
-        )
-        * We assume this model is pretrained and that we need its inference output later for training the real model
-        * update main's argument parser and this class, such that all reaquired arguments are provided via initialization 
 
-        """
         self.net = nn.Sequential(
             nn.Linear(input_dim, hidden),
             nn.ReLU(),
