@@ -28,7 +28,9 @@ from torch.optim import Adam
 # `ForecastExp` already implements: data loading, metric tracking, early
 # stopping, logging, etc.  We only need to supply a model + loss + the core
 # forward method.
-from torch_timeseries.experiments import ForecastExp
+from src.experiments.prob_forecast import ProbForecastExp  # use the more feature-rich experiment
+from src.datasets import Custom  # ensure 'Custom' dataset is in globals for parse_type
+
 from torch_timeseries.utils.parse_type import parse_type  # reuse utility
 
 # ============================================================================
@@ -75,9 +77,9 @@ class MOCK_Parameters:
 # 2.  The actual experiment class
 # ----------------------------------------------------------------------------
 @dataclass
-class NsTradeExp(ForecastExp, MOCK_Parameters):  # type: ignore[misc]
+class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
     """Custom experiment that plugs `MOCK_NET` + `MOCK_LOSS` into the generic
-    training/validation/testing loop provided by `ForecastExp`.
+    training/validation/testing loop provided by `ProbForecastExp`.  This gives you all probability-forecasting metrics and appropriate dataloaders out of the box.
 
     Inherit from another `torch_timeseries.experiments.*` class if your task
     is *not* forecasting (e.g. `ImputationExp`, `AnomalyExp`, …).
