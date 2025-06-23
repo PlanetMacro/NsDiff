@@ -1,44 +1,18 @@
-"""
-NsTrade ŌĆō A minimal example showing how to write a fully-featured training
-loop with `torch_timeseries` while **keeping the code base of this repo
-unchanged**.
-
-The goal is **pedagogical**: it demonstrates how you can
-  ŌĆó subclass an existing experiment class (`ForecastExp`),
-  ŌĆó plug-in your own model,
-  ŌĆó plug-in your own loss function,
-  ŌĆó add extra hyper-parameters via a `@dataclass`,
-all without touching anything inside the `torch_timeseries` package.
-
-Everything marked with the word "MOCK" is *dummy* code that you will replace
-with your real model / loss later on ŌĆō explanatory comments tell you *where*
-and *how* to do that.
-"""
 from __future__ import annotations
-
-# --------------- standard library ---------------
 from dataclasses import dataclass
 from tqdm import tqdm
-
-# --------------- third-party ---------------
 import torch
 from torch import nn
-
-
-# --------------- torch_timeseries ---------------
-# `ForecastExp` already implements: data loading, metric tracking, early
-# stopping, logging, etc.  We only need to supply a model + loss + the core
-# forward method.
 import numpy as np
-# Ensure backwardŌĆÉcompat constant for older utils expecting `np.Inf`
+
 if not hasattr(np, "Inf"):
     np.Inf = np.inf
 
-from src.experiments.prob_forecast import ProbForecastExp  # use the more feature-rich experiment
-from src.datasets import Custom  # ensure 'Custom' dataset is in globals for parse_type
+from src.experiments.prob_forecast import ProbForecastExp
+from src.datasets import Custom 
 
-from torch_timeseries.utils.parse_type import parse_type  # reuse utility
-from src.experiments.NsDiffInference import NsDiffInference  # strict dependency
+from torch_timeseries.utils.parse_type import parse_type
+from src.experiments.NsDiffInference import NsDiffInference
 
 
 # ============================================================================
@@ -104,9 +78,6 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
         self.device = "cpu"
 
 
-    # `ForecastExp` already defines plenty of attributes (batch_size, lr, ŌĆ”)
-    # Below we only set the ones we *want* to overwrite / add.
-
     # --- identification strings shown in logs / wandb ----------------------
     model_type: str = "MOCK_NET"         # appears in filenames & wandb runs
     loss_func_type: str = "mock"          # just a placeholder for readability
@@ -125,11 +96,6 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
         """Replace parent loss initialisation by our `MOCK_LOSS`."""
         self.loss_func = MOCK_LOSS()
 
-    # ---------------------------------------------------------------------
-    # 2.1b  Metrics ŌĆō keep it simple for this CPU demo
-    # ---------------------------------------------------------------------
-
-
     def _init_metrics(self):  # noqa: D401
         """Reuse full probabilistic metrics from parent but downsize pool."""
         super()._init_metrics()
@@ -143,10 +109,6 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
         ctx = mp.get_context("spawn")
         self.task_pool = ctx.Pool(processes=1)
 
-    # ---------------------------------------------------------------------
-    # 2.2  Model ŌĆō overwrite `_init_model`
-    # ---------------------------------------------------------------------
-
     def _init_model(self) -> None:
         """Create the model *after* `self.dataset` has been prepared.
 
@@ -156,15 +118,10 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
         """
 
         input_dim = self.dataset.num_features
-
-        # Replace by your REAL model, e.g.
-        #   self.model = Informer(
-        #       enc_in=input_dim, dec_in=input_dim, c_out=input_dim, ŌĆ”
-        #   ).to(self.device)
         self.model = MOCK_NET(input_dim, self.hidden).to(self.device)
 
         # Instantiate pre-trained NsDiffInference (required)
-        self.inferencer = NsDiffInference(
+        self.pathSpaceSampler = NsDiffInference(
             dataset_type=self.dataset_type,
             windows=self.windows,
             horizon=self.horizon,
@@ -179,13 +136,9 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
         # Use parent class helper to create optimizer
         super()._init_optimizer()
 
-    # ---------------------------------------------------------------------
-    # 2.3  Optional ŌĆō skip `_init_optimizer` because we initialise it above
-    # ---------------------------------------------------------------------
-
 
     # ---------------------------------------------------------------------
-    # 2.3  Training- & validation-batch helpers required by ProbForecastExp
+    # Training- & validation-batch helpers required by ProbForecastExp
     # ---------------------------------------------------------------------
 
     def _process_train_batch(
@@ -226,7 +179,6 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
         return pred, true
 
 
-        # already done in `_init_model`, so we *pass* here.
     # ---------------------------------------------------------------------
     # 2.3c  Evaluation ŌĆō keep full prediction shape for probabilistic metrics
     # ---------------------------------------------------------------------
