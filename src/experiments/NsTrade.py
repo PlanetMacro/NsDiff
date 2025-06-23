@@ -18,6 +18,7 @@ from __future__ import annotations
 
 # --------------- standard library ---------------
 from dataclasses import dataclass
+from tqdm import tqdm
 
 # --------------- third-party ---------------
 import torch
@@ -52,6 +53,24 @@ class MOCK_NET(nn.Module):
 
     def __init__(self, input_dim: int, hidden: int = 64):
         super().__init__()
+        """
+        TODO: 
+        * update this file such that we can instantiate 'NsDiffInference' like this:
+        inferencer = NsDiffInference(
+            dataset_type=args.dataset_type,
+            windows=args.windows,
+            horizon=args.horizon,
+            pred_len=args.pred_len,
+            num_features=args.num_features,
+            seed=args.seed,
+            device=args.device,
+            minisample=args.minisample,
+            freq=args.freq,
+        )
+        * We assume this model is pretrained and that we need its inference output later for training the real model
+        * update main's argument parser and this class, such that all reaquired arguments are provided via initialization 
+
+        """
         self.net = nn.Sequential(
             nn.Linear(input_dim, hidden),
             nn.ReLU(),
@@ -316,6 +335,48 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
         true = origin_y[:, -1, :].unsqueeze(1)   # (B, 1, N)
 
         return pred, true
+
+    def _train(self):
+        self.model.train()
+
+        with torch.enable_grad(), tqdm(total=len(self.train_loader.dataset)) as progress_bar:
+            train_loss = []
+            for i, (
+                batch_x,
+                batch_y,
+                origin_x,
+                origin_y,
+                batch_x_date_enc,
+                batch_y_date_enc,
+            ) in enumerate(self.train_loader):
+                origin_y = origin_y.to(self.device).float()
+                batch_x = batch_x.to(self.device).float()
+                batch_y = batch_y.to(self.device).float()
+                batch_x_date_enc = batch_x_date_enc.to(self.device).float()
+                batch_y_date_enc = batch_y_date_enc.to(self.device).float()
+                loss = self._process_train_batch(
+                    batch_x, batch_y, batch_x_date_enc, batch_y_date_enc
+                )                
+                if self.invtrans_loss:
+                    pred = self.scaler.inverse_transform(pred)
+                    true = origin_y
+                # loss.backward()
+
+                progress_bar.update(batch_x.size(0))
+                
+                #train_loss.append(loss.item())
+                #progress_bar.set_postfix(
+                #    loss=loss.item(),
+                #    lr=self.model_optim.param_groups[0]["lr"],
+                #    epoch=self.current_epoch,
+                #    refresh=True,
+                #)
+                #self.model_optim.step()
+                #self.model_optim.zero_grad()
+                
+
+        self.model.eval()
+        return train_loss
 
 
 # ============================================================================
