@@ -214,7 +214,7 @@ class NsDiffInference:
                             self.NsDiff.betas_tilde_m_1, 
                             self.NsDiff.betas_bar_m_1,
                             )
-        y_tile = y_tile_seq[-1]
-        print(f"Num_timesteps: {self.NsDiff.num_timesteps}")
-        print(f"shape x_tile : {x_tile.shape}")                    
-        print(f"shape y_tile: {y_tile.shape}")
+        return y_tile_seq[-1]
+        #print(f"Num_timesteps: {self.NsDiff.num_timesteps}")
+        #print(f"shape x_tile : {x_tile.shape}")                    
+        #print(f"shape y_tile: {y_tile.shape}")

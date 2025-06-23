@@ -4,8 +4,10 @@ Main script for running inference with the NsDiffInference class.
 """
 import argparse
 import numpy as np
-import torch                                        # NEW
+import torch 
 from src.experiments.NsDiffInference import NsDiffInference
+from torch_timeseries.dataloader import SlidingWindowTS
+from torch_timeseries.utils.parse_type import parse_type
 
 
 def parse_args():
@@ -53,6 +55,23 @@ def main():
         freq=args.freq,
     )
 
+    dataloader = SlidingWindowTS(
+                self.dataset,
+                self.scaler,
+                window=self.windows,
+                horizon=self.horizon,
+                steps=self.pred_len,
+                scale_in_train=True,
+                shuffle_train=shuffle,
+                freq=self.dataset.freq,
+                batch_size=self.batch_size,
+                train_ratio=self.train_ratio,
+                test_ratio=self.test_ratio,
+                num_worker=self.num_worker,
+                fast_test=fast_test,
+                fast_val=fast_val,
+            )
+
     print("\nNsDiffInference initialized…")
 
     # ------------------------------------------------------------------ #
@@ -82,7 +101,7 @@ def main():
 
     # Run inference without tracking gradients
     with torch.no_grad():
-        inferencer.infer(batch_x, batch_y, batch_x_mark, batch_y_mark)
+        prediction = inferencer.infer(batch_x, batch_y, batch_x_mark, batch_y_mark)
 
     print("Dummy inference pass complete")
 
