@@ -97,14 +97,21 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
     # ---------------------------------------------------------------------
 
     def _init_loss_func(self) -> None:  # noqa: D401
-        """Install our custom loss into `self.loss_func`.
-
-        If you later prefer to use a *built-in* criterion you can instead set
-        `self.loss_func_type` to `'mse'`, `'mae'`, … and let the parent class
-        handle initialisation.
-        """
-
+        """Replace parent loss initialisation by our `MOCK_LOSS`."""
         self.loss_func = MOCK_LOSS()
+
+    # ---------------------------------------------------------------------
+    # 2.1b  Metrics – keep it simple for this CPU demo
+    # ---------------------------------------------------------------------
+
+    def _init_metrics(self):  # noqa: D401
+        """Only MSE/MAE to avoid heavy deps such as CRPS."""
+        from torchmetrics import MeanSquaredError, MeanAbsoluteError, MetricCollection
+        self.metrics = MetricCollection({
+            "mse": MeanSquaredError(),
+            "mae": MeanAbsoluteError(),
+        })
+        self.metrics.to("cpu")
 
     # ---------------------------------------------------------------------
     # 2.2  Model – overwrite `_init_model`
