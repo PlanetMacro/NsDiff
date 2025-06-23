@@ -172,8 +172,7 @@ class NsDiffInference:
     # ------------------------------------------------------------------ #
     def infer(self, batch_x, batch_y, batch_x_mark, batch_y_mark):
         # batch_x: (B, T, N)
-        # batch_y: (B, O, N)        
-        print("hi there")
+        # batch_y: (B, O, N)
         
         batch_y_mark_input = torch.concat([batch_x_mark[:, -self.label_len:, :], batch_y_mark], dim=1)
 

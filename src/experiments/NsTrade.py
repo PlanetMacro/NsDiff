@@ -304,6 +304,11 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
                 batch_y = batch_y.to(self.device).float()
                 batch_x_date_enc = batch_x_date_enc.to(self.device).float()
                 batch_y_date_enc = batch_y_date_enc.to(self.device).float()
+
+                # generate path space samples
+                with torch.no_grad():
+                    paths = self.pathSpaceSampler.infer(batch_x, batch_y, batch_x_date_enc, batch_y_date_enc)
+
                 loss = self._process_train_batch(
                     batch_x, batch_y, batch_x_date_enc, batch_y_date_enc
                 )                
