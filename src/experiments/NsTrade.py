@@ -112,6 +112,9 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
             "mae": MeanAbsoluteError(),
         })
         self.metrics.to("cpu")
+        import torch.multiprocessing as mp
+        ctx = mp.get_context("spawn")
+        self.task_pool = ctx.Pool(processes=1)  # single-process pool for simplicity
 
     # ---------------------------------------------------------------------
     # 2.2  Model – overwrite `_init_model`
