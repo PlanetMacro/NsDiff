@@ -84,6 +84,12 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
     Inherit from another `torch_timeseries.experiments.*` class if your task
     is *not* forecasting (e.g. `ImputationExp`, `AnomalyExp`, …).
     """
+    def __post_init__(self):
+        super().__post_init__()
+        # Force CPU-only execution irrespective of CLI flags
+        self.use_gpu = False
+        self.device = torch.device("cpu")
+
 
     # `ForecastExp` already defines plenty of attributes (batch_size, lr, …)
     # Below we only set the ones we *want* to overwrite / add.
