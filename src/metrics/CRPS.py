@@ -1,6 +1,6 @@
 import torch
 from torchmetrics import Metric
-import CRPS.CRPS as pscore  # Assuming `pscore` is the function to compute CRPS
+from CRPS.CRPS import CRPS as pscore  # Import the CRPS scorer class
 from concurrent.futures import ProcessPoolExecutor
 
 class CRPS(Metric):

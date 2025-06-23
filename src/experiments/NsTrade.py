@@ -28,6 +28,11 @@ from torch.optim import Adam
 # `ForecastExp` already implements: data loading, metric tracking, early
 # stopping, logging, etc.  We only need to supply a model + loss + the core
 # forward method.
+import numpy as np
+# Ensure backward‐compat constant for older utils expecting `np.Inf`
+if not hasattr(np, "Inf"):
+    np.Inf = np.inf
+
 from src.experiments.prob_forecast import ProbForecastExp  # use the more feature-rich experiment
 from src.datasets import Custom  # ensure 'Custom' dataset is in globals for parse_type
 
@@ -86,9 +91,13 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
     """
     use_gpu: bool = False  # ensure every run stays on CPU
 
+
     def __post_init__(self):
+        # Ensure backward compat again
+        if not hasattr(np, "Inf"):
+            np.Inf = np.inf
         # After dataclass init, lock device to CPU
-        self.device = torch.device("cpu")
+        self.device = "cpu"
 
 
     # `ForecastExp` already defines plenty of attributes (batch_size, lr, …)
@@ -201,6 +210,69 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
 
 
         # already done in `_init_model`, so we *pass* here.
+    # ---------------------------------------------------------------------
+    # 2.3c  Evaluation – keep full prediction shape for probabilistic metrics
+    # ---------------------------------------------------------------------
+    def _evaluate(self, dataloader):  # noqa: C901
+        """Copy of ``ProbForecastExp._evaluate`` without the shape squeeze.
+
+        The parent class flattens predictions when ``pred_len==1`` which breaks
+        CRPS/QICE/etc.  Here we always feed the *full* tensor to the metrics –
+        our ``_process_one_batch`` already returns the expected 4-D/3-D shapes.
+        """
+        from tqdm import tqdm
+        import torch
+        from src.experiments.prob_forecast import update_metrics  # same helper
+
+        self.model.eval()
+        self.metrics.reset()
+        results = []
+        with tqdm(total=len(dataloader.dataset)) as bar:
+            for (
+                batch_x,
+                batch_y,
+                origin_x,
+                origin_y,
+                batch_x_date_enc,
+                batch_y_date_enc,
+            ) in dataloader:
+                # send to device
+                batch_x = batch_x.to(self.device).float()
+                batch_y = batch_y.to(self.device).float()
+                origin_x = origin_x.to(self.device)
+                origin_y = origin_y.to(self.device)
+                batch_x_date_enc = batch_x_date_enc.to(self.device).float()
+                batch_y_date_enc = batch_y_date_enc.to(self.device).float()
+
+                preds, truths = self._process_one_batch(
+                    batch_x,
+                    batch_y,
+                    origin_x,
+                    origin_y,
+                    batch_x_date_enc,
+                    batch_y_date_enc,
+                )
+
+                if self.invtrans_loss:
+                    preds = self.scaler.inverse_transform(preds)
+                    truths = origin_y
+
+                results.append(
+                    self.task_pool.apply_async(
+                        update_metrics,
+                        (
+                            preds.contiguous().cpu().detach(),
+                            truths.contiguous().cpu().detach(),
+                            self.metrics,
+                        ),
+                    )
+                )
+                bar.update(batch_x.size(0))
+
+        for r in results:
+            r.get()
+        return {name: float(metric.compute()) for name, metric in self.metrics.items()}
+
         pass
 
     # ---------------------------------------------------------------------
@@ -235,10 +307,13 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
         # -----------------------------------------------------------------
         # Forward pass through our model
         # -----------------------------------------------------------------
-        pred = self.model(batch_x)        # (B, N)
+        pred_deterministic = self.model(batch_x)  # (B, N)
+        # For probabilistic metrics expect (B, O, N, S).  We have only one step (O=1)
+        # and one sample (S=1) → add singleton dims.
+        pred = pred_deterministic.unsqueeze(1).unsqueeze(-1)   # (B, 1, N, 1)
 
         # Target → last time step of the (already *unscaled*) ground truth.
-        true = origin_y[:, -1, :]         # (B, N)
+        true = origin_y[:, -1, :].unsqueeze(1)   # (B, 1, N)
 
         return pred, true
 
