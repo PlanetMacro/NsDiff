@@ -104,36 +104,19 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
     # 2.1b  Metrics – keep it simple for this CPU demo
     # ---------------------------------------------------------------------
 
-        from torchmetrics import Metric
-        class _DummyMetric(Metric):
-            def __init__(self):
-                super().__init__()
-            def update(self, *args, **kwargs):
-                pass
-            def compute(self):
-                return torch.tensor(0.0)
 
     def _init_metrics(self):  # noqa: D401
-        """Only MSE/MAE to avoid heavy deps such as CRPS."""
-        from torchmetrics import MeanSquaredError, MeanAbsoluteError, MetricCollection
-        class _DummyMetric(Metric):
-            def __init__(self):
-                super().__init__()
-                self.add_state("dummy", default=torch.tensor(0.0), dist_reduce_fx="mean")
-            def update(self, *args, **kwargs):
-                pass
-            def compute(self):
-                return self.dummy
-
-        self.metrics = MetricCollection({
-            "mse": MeanSquaredError(),
-            "mae": MeanAbsoluteError(),
-            "crps": _DummyMetric(),
-        })
-        self.metrics.to("cpu")
+        """Reuse full probabilistic metrics from parent but downsize pool."""
+        super()._init_metrics()
         import torch.multiprocessing as mp
+        if hasattr(self, "task_pool"):
+            try:
+                self.task_pool.terminate()
+                self.task_pool.join()
+            except Exception:
+                pass
         ctx = mp.get_context("spawn")
-        self.task_pool = ctx.Pool(processes=1)  # single-process pool for simplicity
+        self.task_pool = ctx.Pool(processes=1)
 
     # ---------------------------------------------------------------------
     # 2.2  Model – overwrite `_init_model`
