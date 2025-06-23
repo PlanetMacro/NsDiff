@@ -67,15 +67,18 @@ class NsTradeExp(ProbForecastExp, MOCK_Parameters):  # type: ignore[misc]
     Inherit from another `torch_timeseries.experiments.*` class if your task
     is *not* forecasting (e.g. `ImputationExp`, `AnomalyExp`, ŌĆ”).
     """
-    use_gpu: bool = False  # ensure every run stays on CPU
+    use_gpu: bool = True  # default: try GPU if available
 
 
     def __post_init__(self):
         # Ensure backward compat again
         if not hasattr(np, "Inf"):
             np.Inf = np.inf
-        # After dataclass init, lock device to CPU
-        self.device = "cpu"
+        # Select device
+        if self.use_gpu and torch.cuda.is_available():
+            self.device = "cuda"
+        else:
+            self.device = "cpu"
 
 
     # --- identification strings shown in logs / wandb ----------------------
@@ -364,6 +367,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, default=6)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--gpu", action="store_true", help="Use CUDA if available")
     args, _ = parser.parse_known_args()
 
     # Build the experiment from CLI arguments.  All remaining defaults come
@@ -380,6 +384,7 @@ if __name__ == "__main__":
         epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,
+        use_gpu=args.gpu,
     )
 
     # Run one seed only for brevity.  If you need multiple seeds simply loop
